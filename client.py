@@ -21,7 +21,6 @@ class Client(QMainWindow, Ui_MainWindow):
 
         # # Инициализируем поля ввода
         self.client_name = ''
-        self.recived_message = ''
         # Скрываем группы, которые должны быть видимы только после подключения
 
         # Подключаем обработчики событий
@@ -54,22 +53,10 @@ class Client(QMainWindow, Ui_MainWindow):
         self.serverConnectionGroupBox.setVisible(True)
 
     def on_ready_read(self):
-        # Читаем хеш-сумму из сокета
-        received_hash = self.socket.readAll().data().decode().strip()
-
-        # Получаем сохраненное сообщение
-        original_data = self.recived_message
-
-        # Проверяем хеш сообщения
-        result = check_data_sha256(received_hash, original_data)
-        if result == original_data:
-            self.chatTextEdit.append(f"{self.client_name}: {original_data} ({received_hash} Хэши совпадают)")
-        else:
-            self.chatTextEdit.append(
-                f"{self.client_name}: {original_data} ({received_hash} Ошибка при проверке хеша сообщения)")
-
-        # Очищаем сохраненное сообщение после проверки
-        self.sent_message = ''
+        # Читаем данные из сокета
+        data = self.socket.readAll().data().decode()
+        # Обрабатываем полученные данные
+        self.handle_server_message(data)
 
     def send_message(self):
         # Получаем текст из поля ввода сообщения
@@ -77,17 +64,22 @@ class Client(QMainWindow, Ui_MainWindow):
         if not message:
             return
 
-        # Сохраняем сообщение для последующей проверки
-
-        # Получаем хеш-значение и оригинальные данные
+        # Получаем хеш-значение и исходные данные
         hash_value, original_data = hash_data_sha256(message)
-        self.recived_message = original_data
-        # Отправляем хеш-сумму на сервер
-        self.socket.write(hash_value.encode())
 
+        # Если сообщение не "ошибочный", отправляем исходное сообщение, иначе обрабатываем как ошибку
+        if message == 'ошибочный':
+            date_time = QDateTime.currentDateTime().toString('dd.MM.yyyy hh:mm:ss')
+            encrypted_message = f"[{date_time}] {self.client_name}:{original_data} ({hash_value})"
+        else:
+            date_time = QDateTime.currentDateTime().toString('dd.MM.yyyy hh:mm:ss')
+            full_message = f"[{date_time}] {self.client_name}: {message}"
+            encrypted_message = f"{full_message} ({hash_value}) "
+
+        # Отправляем сообщение на сервер
+        self.socket.write(encrypted_message.encode())
         # Очищаем поле ввода сообщения
         self.messageLineEdit.clear()
-
     def on_disconnected(self):
         self.statusLabel.setText("Disconnected from the server.")
         self.chatGroupBox.setVisible(False)
@@ -95,12 +87,6 @@ class Client(QMainWindow, Ui_MainWindow):
 
     def handle_server_message(self, message):
         self.chatTextEdit.append(message)
-
-    def on_disconnected(self):
-        self.statusLabel.setText("Disconnected from the server.")
-        self.chatGroupBox.setVisible(False)
-        self.serverConnectionGroupBox.setVisible(True)
-
 
 
 
